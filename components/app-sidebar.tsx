@@ -14,14 +14,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, CalendarIcon, TrophyIcon, UsersIcon, SunIcon, MoonIcon } from "lucide-react"
+import { LayoutDashboardIcon, CalendarIcon, UsersIcon, SunIcon, MoonIcon, TrophyIcon } from "lucide-react"
 
 const data = {
-  user: {
-    name: "Admin",
-    email: "admin@pelada.com",
-    avatar: "",
-  },
   navMain: [
     {
       title: "Dashboard",
@@ -77,7 +72,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <NavUser user={data.user} />
+        <NavUser />
       </SidebarFooter>
     </Sidebar>
   )
