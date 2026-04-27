@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useTheme } from "next-themes"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -13,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, CalendarIcon, TrophyIcon, UsersIcon } from "lucide-react"
+import { LayoutDashboardIcon, CalendarIcon, TrophyIcon, UsersIcon, SunIcon, MoonIcon } from "lucide-react"
 
 const data = {
   user: {
@@ -41,6 +42,8 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { resolvedTheme, setTheme } = useTheme()
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -62,6 +65,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain items={data.navMain} />
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip={resolvedTheme === "dark" ? "Modo Claro" : "Modo Escuro"}
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="cursor-pointer"
+            >
+              {resolvedTheme === "dark" ? <SunIcon /> : <MoonIcon />}
+              <span>{resolvedTheme === "dark" ? "Modo Claro" : "Modo Escuro"}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <NavUser user={data.user} />
       </SidebarFooter>
     </Sidebar>
