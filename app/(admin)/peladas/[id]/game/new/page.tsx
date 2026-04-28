@@ -108,6 +108,11 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
     queryFn: async () => { const res = await fetch("/api/users"); return res.json(); },
   });
 
+  const { data: activeGame } = useQuery<{ id: string; matchDayId: string; teamAName: string; teamBName: string; scoreA: number; scoreB: number } | null>({
+    queryKey: ["active-game"],
+    queryFn: async () => { const res = await fetch("/api/games/active"); return res.json(); },
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/games", {
@@ -118,7 +123,10 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
       if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? "Erro ao criar jogo"); }
       return res.json();
     },
-    onSuccess: (game) => router.push(`/peladas/${id}/game/${game.id}`),
+    onSuccess: (game) => {
+      queryClient.invalidateQueries({ queryKey: ["active-game"] });
+      router.push(`/peladas/${id}/game/${game.id}`);
+    },
   });
 
   const finishPeladaMutation = useMutation({
@@ -428,12 +436,27 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
 
       {/* Bottom bar */}
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t py-4 px-4 space-y-2">
+        {activeGame && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-2">
+            <p className="text-xs font-bold text-amber-800">Jogo ativo em andamento</p>
+            <p className="text-xs text-amber-700">
+              {activeGame.teamAName} {activeGame.scoreA} × {activeGame.scoreB} {activeGame.teamBName}
+            </p>
+            <Button
+              variant="outline"
+              className="w-full h-9 font-bold text-sm border-amber-300 text-amber-800 hover:bg-amber-100"
+              onClick={() => router.push(`/peladas/${activeGame.matchDayId}/game/${activeGame.id}`)}
+            >
+              Voltar ao jogo ativo
+            </Button>
+          </div>
+        )}
         {createMutation.isError && (
           <p className="text-destructive text-sm text-center">{(createMutation.error as Error).message}</p>
         )}
         <Button
           className="w-full h-12 gap-2 font-bold"
-          disabled={!canCreate || createMutation.isPending}
+          disabled={!canCreate || createMutation.isPending || !!activeGame}
           onClick={() => createMutation.mutate()}
         >
           <Swords className="w-4 h-4" />

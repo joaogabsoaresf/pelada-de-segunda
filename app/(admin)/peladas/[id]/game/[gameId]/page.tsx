@@ -3,6 +3,13 @@
 import { use, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Trash2, ArrowRightLeft, UserMinus, UserPlus } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { getTeamColor } from "@/lib/team-colors";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -128,6 +135,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
   const [allPlayers, setAllPlayers] = useState<PlayerInfo[]>([]);
   const [subOpen, setSubOpen] = useState(false);
   const [subStep, setSubStep] = useState<SubStep>({ type: "pick-player" });
+  const closeOnSubRef = useRef(false);
 
   const { data: game, isLoading } = useQuery<Game>({
     queryKey: ["game", gameId],
@@ -167,7 +175,10 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       if (!res.ok) throw new Error("Erro ao iniciar jogo");
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["game", gameId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["game", gameId] });
+      queryClient.invalidateQueries({ queryKey: ["active-game"] });
+    },
   });
 
   const finishMutation = useMutation({
@@ -179,6 +190,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["game", gameId] });
       queryClient.invalidateQueries({ queryKey: ["match-day-stats", id] });
+      queryClient.invalidateQueries({ queryKey: ["active-game"] });
       router.push(`/peladas/${id}/game/new`);
     },
   });
@@ -194,6 +206,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["game", gameId] });
+      queryClient.invalidateQueries({ queryKey: ["active-game"] });
       setSheetMode(null); setNoteText("");
     },
   });
@@ -204,7 +217,10 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? "Erro ao remover evento"); }
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["game", gameId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["game", gameId] });
+      queryClient.invalidateQueries({ queryKey: ["active-game"] });
+    },
   });
 
   const pauseMutation = useMutation({
@@ -264,7 +280,10 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["game", gameId] });
-      setSubOpen(false);
+      if (closeOnSubRef.current) {
+        setSubOpen(false);
+        closeOnSubRef.current = false;
+      }
       setSubStep({ type: "pick-player" });
     },
   });
@@ -323,20 +342,16 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
     let newB = [...game.teamB.players];
     let newWaiting = [...(game.waitingList ?? [])];
 
-    // Remove playerOut from their team
     if (fromTeam === "A") newA = newA.filter((p) => p !== playerOut);
     else newB = newB.filter((p) => p !== playerOut);
 
-    // Remove playerIn from their source
     if (fromSource === "A") newA = newA.filter((p) => p !== playerIn);
     else if (fromSource === "B") newB = newB.filter((p) => p !== playerIn);
     else if (fromSource === "bench") newWaiting = newWaiting.filter((p) => p !== playerIn);
 
-    // Place playerIn in the team where playerOut was
     if (fromTeam === "A") newA.push(playerIn);
     else newB.push(playerIn);
 
-    // Place playerOut where playerIn was (swap) or bench
     if (fromSource === "A" || fromSource === "B") {
       if (fromSource === "A") newA.push(playerOut);
       else newB.push(playerOut);
@@ -344,6 +359,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       newWaiting.push(playerOut);
     }
 
+    closeOnSubRef.current = true;
     doSub(newA, newB, newWaiting);
   }
 
@@ -448,54 +464,132 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
         </div>
       </div>
 
-      {/* Event log */}
-      <div className="flex-1 px-4 pt-4 pb-52">
-        {game.events.length > 0 && (
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest px-4 py-2.5 border-b">
-              Eventos
-            </p>
-            <ScrollArea className="h-44">
-              <div className="p-3 space-y-1">
-                {[...game.events].reverse().map((event, i) => {
-                  const realIndex = game.events.length - 1 - i;
-                  return (
-                    <div key={i} className="flex items-start gap-2 text-sm py-1.5 border-b border-border/40 last:border-0">
-                      <span className="shrink-0 text-base">
-                        {event.type === "goal" ? "⚽" : event.type === "assist" ? "👟" : "📝"}
-                      </span>
-                      <div className="flex-1 text-sm">
-                        {event.type === "goal" && event.playerId && (
-                          <p>
-                            <span className="font-semibold">{getPlayerName(event.playerId)}</span>
-                            <span className="text-muted-foreground"> marcou!</span>
-                            {event.relatedPlayerId && (
-                              <span className="text-muted-foreground text-xs"> · assist: {getPlayerName(event.relatedPlayerId)}</span>
-                            )}
-                          </p>
-                        )}
-                        {event.type === "assist" && event.playerId && (
-                          <p>Assistência de <span className="font-semibold">{getPlayerName(event.playerId)}</span></p>
-                        )}
-                        {event.type === "note" && <p className="text-muted-foreground italic">{event.note}</p>}
-                      </div>
-                      {(event.type === "goal" || event.type === "assist") && isLive && (
-                        <button
-                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                          onClick={() => deleteEventMutation.mutate(realIndex)}
-                          disabled={deleteEventMutation.isPending}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+      {/* 3-column: Team A | Events | Team B */}
+      <TooltipProvider>
+        <div className="flex-1 px-4 pt-4 pb-52">
+          <div className="grid grid-cols-[1fr_1.2fr_1fr] gap-3">
+            {/* Team A players */}
+            {(() => {
+              const style = getTeamColor(teamAName);
+              const players = getTeamPlayers("A");
+              return (
+                <div className={`rounded-xl border ${style.border} overflow-hidden shadow-sm`}>
+                  <div className={`bg-gradient-to-r ${style.gradient} px-3 py-2 text-center`}>
+                    <p className="font-black text-xs text-white truncate">{teamAName}</p>
+                  </div>
+                  <div className="p-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {players.map((player) => {
+                        const color = getAvatarColor(player.name);
+                        return (
+                          <Tooltip key={player.userId}>
+                            <TooltipTrigger asChild>
+                              <div className="flex flex-col items-center gap-1 cursor-default">
+                                <Avatar className="w-9 h-9">
+                                  <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                                    {player.name.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs font-semibold">{player.name}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Events center card */}
+            <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest px-3 py-2 border-b text-center">
+                Eventos
+              </p>
+              {game.events.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">Sem eventos</p>
+              ) : (
+                <ScrollArea className="h-[200px]">
+                  <div className="p-2 space-y-0.5">
+                    {[...game.events].reverse().map((event, i) => {
+                      const realIndex = game.events.length - 1 - i;
+                      return (
+                        <div key={i} className="flex items-start gap-1.5 text-xs py-1.5 border-b border-border/40 last:border-0">
+                          <span className="shrink-0 text-sm">
+                            {event.type === "goal" ? "⚽" : event.type === "assist" ? "👟" : "📝"}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            {event.type === "goal" && event.playerId && (
+                              <p className="truncate">
+                                <span className="font-semibold">{getPlayerName(event.playerId)}</span>
+                                {event.relatedPlayerId && (
+                                  <span className="text-muted-foreground"> · {getPlayerName(event.relatedPlayerId)}</span>
+                                )}
+                              </p>
+                            )}
+                            {event.type === "assist" && event.playerId && (
+                              <p className="truncate">Assist <span className="font-semibold">{getPlayerName(event.playerId)}</span></p>
+                            )}
+                            {event.type === "note" && <p className="text-muted-foreground italic truncate">{event.note}</p>}
+                          </div>
+                          {(event.type === "goal" || event.type === "assist") && isLive && (
+                            <button
+                              className="p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                              onClick={() => deleteEventMutation.mutate(realIndex)}
+                              disabled={deleteEventMutation.isPending}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
+            </div>
+
+            {/* Team B players */}
+            {(() => {
+              const style = getTeamColor(teamBName);
+              const players = getTeamPlayers("B");
+              return (
+                <div className={`rounded-xl border ${style.border} overflow-hidden shadow-sm`}>
+                  <div className={`bg-gradient-to-r ${style.gradient} px-3 py-2 text-center`}>
+                    <p className="font-black text-xs text-white truncate">{teamBName}</p>
+                  </div>
+                  <div className="p-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {players.map((player) => {
+                        const color = getAvatarColor(player.name);
+                        return (
+                          <Tooltip key={player.userId}>
+                            <TooltipTrigger asChild>
+                              <div className="flex flex-col items-center gap-1 cursor-default">
+                                <Avatar className="w-9 h-9">
+                                  <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                                    {player.name.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p className="text-xs font-semibold">{player.name}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-        )}
-      </div>
+        </div>
+      </TooltipProvider>
 
       {/* Bottom bar */}
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t py-4 px-4 space-y-2">

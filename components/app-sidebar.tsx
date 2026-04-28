@@ -38,6 +38,10 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+
+  const isDark = mounted && resolvedTheme === "dark"
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -63,12 +67,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip={resolvedTheme === "dark" ? "Modo Claro" : "Modo Escuro"}
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              tooltip={isDark ? "Modo Claro" : "Modo Escuro"}
+              onClick={() => setTheme(isDark ? "light" : "dark")}
               className="cursor-pointer"
             >
-              {resolvedTheme === "dark" ? <SunIcon /> : <MoonIcon />}
-              <span>{resolvedTheme === "dark" ? "Modo Claro" : "Modo Escuro"}</span>
+              {isDark ? <SunIcon /> : <MoonIcon />}
+              <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
