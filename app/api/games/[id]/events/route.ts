@@ -24,25 +24,7 @@ export async function POST(
     return NextResponse.json({ error: "Jogo não encontrado" }, { status: 404 });
   }
 
-  if (game.status === "finished") {
-    return NextResponse.json(
-      { error: "Não é possível adicionar eventos a um jogo finalizado" },
-      { status: 400 }
-    );
-  }
 
-  if ((type === "goal" || type === "assist") && playerId) {
-    const allPlayers = [
-      ...game.teamA.players.map((p) => p.toString()),
-      ...game.teamB.players.map((p) => p.toString()),
-    ];
-    if (!allPlayers.includes(playerId)) {
-      return NextResponse.json(
-        { error: "Jogador não pertence a nenhum dos times" },
-        { status: 400 }
-      );
-    }
-  }
 
   if (type === "goal" && !playerId) {
     return NextResponse.json(

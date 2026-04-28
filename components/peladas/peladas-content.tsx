@@ -242,6 +242,11 @@ export function PeladasContent() {
                             {pelada.status === "active" ? (
                               <>
                                 <DropdownMenuItem
+                                  onClick={() => router.push(`/peladas/${pelada.id}/history`)}
+                                >
+                                  Histórico
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
                                   onClick={() => {
                                     setChangingDateId(pelada.id)
                                     setNewDate(new Date(pelada.date))
@@ -265,11 +270,9 @@ export function PeladasContent() {
                             ) : (
                               <>
                                 <DropdownMenuItem
-                                  onClick={() =>
-                                    router.push(`/peladas/${pelada.id}/stats`)
-                                  }
+                                  onClick={() => router.push(`/peladas/${pelada.id}/summary`)}
                                 >
-                                  Ver estatísticas
+                                  Ver resumo
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleReactivate(pelada.id)}

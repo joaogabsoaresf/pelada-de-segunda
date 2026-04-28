@@ -1,6 +1,8 @@
 import { ChartGoalsPerPelada } from "@/components/chart-goals-per-pelada"
 import { PlayersTable } from "@/components/players-table"
+import { RankingCards } from "@/components/ranking-cards"
 import { SectionCards } from "@/components/section-cards"
+import { WinRateTable } from "@/components/win-rate-table"
 
 export default function DashboardPage() {
   return (
@@ -11,6 +13,8 @@ export default function DashboardPage() {
           <ChartGoalsPerPelada />
         </div>
         <PlayersTable />
+        <RankingCards />
+        <WinRateTable />
       </div>
     </div>
   )

@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Swords, Users, Target, Zap, Flag, Settings2, Copy, CheckCheck, BarChart2, ChevronDown } from "lucide-react";
+import { ArrowLeft, Swords, Users, Target, Zap, Flag, Settings2, Copy, CheckCheck, BarChart2, ChevronDown, History } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -72,13 +72,7 @@ function getAvatarColor(name: string) {
   return AVATAR_COLORS[idx];
 }
 
-const TEAM_COLORS = [
-  { ring: "ring-blue-500", accent: "bg-blue-600", light: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", divide: "divide-blue-100", badge: "border-blue-300 text-blue-700" },
-  { ring: "ring-rose-500", accent: "bg-rose-600", light: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", divide: "divide-rose-100", badge: "border-rose-300 text-rose-700" },
-  { ring: "ring-amber-500", accent: "bg-amber-500", light: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", divide: "divide-amber-100", badge: "border-amber-300 text-amber-700" },
-  { ring: "ring-violet-500", accent: "bg-violet-600", light: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", divide: "divide-violet-100", badge: "border-violet-300 text-violet-700" },
-  { ring: "ring-teal-500", accent: "bg-teal-600", light: "bg-teal-50", border: "border-teal-200", text: "text-teal-700", divide: "divide-teal-100", badge: "border-teal-300 text-teal-700" },
-];
+import { getTeamColor } from "@/lib/team-colors";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -274,12 +268,20 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {gamesPlayed > 0 && (
-              <Link href={`/peladas/${id}/stats`}>
-                <Button variant="ghost" size="sm" className="gap-1.5">
-                  <BarChart2 className="w-4 h-4" />
-                  Estatísticas
-                </Button>
-              </Link>
+              <>
+                <Link href={`/peladas/${id}/history`}>
+                  <Button variant="ghost" size="sm" className="gap-1.5">
+                    <History className="w-4 h-4" />
+                    Histórico
+                  </Button>
+                </Link>
+                <Link href={`/peladas/${id}/stats`}>
+                  <Button variant="ghost" size="sm" className="gap-1.5">
+                    <BarChart2 className="w-4 h-4" />
+                    Estatísticas
+                  </Button>
+                </Link>
+              </>
             )}
             {teams.length > 0 && (
               <Button variant="outline" size="sm" className="gap-1.5" onClick={openManage}>
@@ -304,7 +306,7 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
           {teams.map((team, idx) => {
             const isSelected = selectedTeams.includes(team.id);
             const selectionOrder = selectedTeams.indexOf(team.id);
-            const tc = TEAM_COLORS[idx % TEAM_COLORS.length];
+            const tc = getTeamColor(team.name);
             const label = isSelected ? (selectionOrder === 0 ? "A" : "B") : null;
             const record = getRecord(team.id);
 
@@ -474,7 +476,7 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
           <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">
             <div className="space-y-4 pb-4">
               {(matchDay?.teams ?? []).map((team, idx) => {
-                const tc = TEAM_COLORS[idx % TEAM_COLORS.length];
+                const tc = getTeamColor(team.name);
                 const otherTeams = (matchDay?.teams ?? []).filter((t) => t.id !== team.id);
                 const roster = editRosters[team.id] ?? [];
                 return (

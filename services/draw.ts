@@ -18,6 +18,8 @@ function shuffle<T>(array: T[]): T[] {
   return arr;
 }
 
+import { TEAM_COLORS } from "@/lib/team-colors";
+
 export function drawTeams(players: PlayerWithPot[], numTeams: number): DrawnTeam[] {
   if (players.some((p) => !p.pot || p.pot < 1)) {
     throw new Error("Todos os jogadores precisam ter um pote definido");
@@ -29,7 +31,7 @@ export function drawTeams(players: PlayerWithPot[], numTeams: number): DrawnTeam
 
   const teams: DrawnTeam[] = Array.from({ length: numTeams }, (_, i) => ({
     id: `team-${i + 1}`,
-    name: `Time ${String.fromCharCode(65 + i)}`,
+    name: TEAM_COLORS[i % TEAM_COLORS.length].label,
     players: [],
   }));
 

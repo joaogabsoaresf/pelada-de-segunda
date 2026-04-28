@@ -300,7 +300,7 @@ export default function MatchDayPage({ params }: { params: Promise<{ id: string 
   useEffect(() => {
     if (!isLoading && matchDay) {
       if (matchDay.status === "finished") {
-        router.replace(`/peladas/${id}/stats`);
+        router.replace(`/peladas/${id}/summary`);
       } else if (matchDay.teams.length > 0 && !manageMode) {
         router.replace(`/peladas/${id}/game/new`);
       }

@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, Share2, Copy, CheckCheck, Target, Zap, FileText } from "lucide-react";
+import { ArrowLeft, Share2, Copy, CheckCheck, Target, Zap, FileText, Trophy } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ interface Team { id: string; name: string; players: TeamPlayer[] }
 interface MatchDay { id: string; date: string; teams: Team[] }
 interface RankingEntry { teamId: string; wins: number; draws: number; losses: number; points: number }
 interface PlayerStat { userId: string; name: string; count: number }
+interface PlayerWinStat { userId: string; name: string; gamesPlayed: number; wins: number; winRate: number }
 interface NoteEntry { note: string; createdAt: string }
 interface GamesStats {
   ranking: RankingEntry[];
@@ -23,6 +24,7 @@ interface GamesStats {
   topAssisters: PlayerStat[];
   gamesPlayed: number;
   notes: NoteEntry[];
+  playerStats: PlayerWinStat[];
 }
 
 const AVATAR_COLORS = [
@@ -269,6 +271,70 @@ export default function PeladaStatsPage({ params }: { params: Promise<{ id: stri
                     <p className="text-sm leading-relaxed">{n.note}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Player Win Stats */}
+        {stats?.playerStats && stats.playerStats.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Desempenho Individual</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+              <div className="flex items-center gap-1.5 px-4 py-3 border-b">
+                <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <p className="font-bold text-xs">% de Vitórias</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left font-semibold text-xs text-muted-foreground px-4 py-2.5">Jogador</th>
+                      <th className="text-center font-semibold text-xs text-muted-foreground px-3 py-2.5 w-16">Jogos</th>
+                      <th className="text-center font-semibold text-xs text-muted-foreground px-3 py-2.5 w-16">Vitórias</th>
+                      <th className="text-center font-semibold text-xs text-muted-foreground px-3 py-2.5 w-16">%</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {stats.playerStats.map((player, i) => {
+                      const color = getAvatarColor(player.name);
+                      return (
+                        <tr key={player.userId} className="hover:bg-muted/30">
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground w-5 shrink-0">{i + 1}.</span>
+                              <Avatar className="w-6 h-6 shrink-0">
+                                <AvatarFallback className={`text-[9px] font-bold ${color.bg} ${color.text}`}>
+                                  {player.name.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-semibold text-sm truncate">{player.name}</span>
+                            </div>
+                          </td>
+                          <td className="text-center px-3 py-2.5 font-medium text-muted-foreground">{player.gamesPlayed}</td>
+                          <td className="text-center px-3 py-2.5 font-medium text-muted-foreground">{player.wins}</td>
+                          <td className="text-center px-3 py-2.5">
+                            <Badge
+                              className={`border-0 text-[10px] font-bold px-1.5 ${
+                                player.winRate >= 60
+                                  ? "bg-green-100 text-green-700 hover:bg-green-100"
+                                  : player.winRate >= 40
+                                  ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                                  : "bg-red-100 text-red-700 hover:bg-red-100"
+                              }`}
+                            >
+                              {player.winRate}%
+                            </Badge>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

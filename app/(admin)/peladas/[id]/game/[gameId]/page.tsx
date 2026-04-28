@@ -2,7 +2,7 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2, ArrowRightLeft, UserMinus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ interface Game {
   matchDayId: string;
   teamA: { id: string; players: string[] };
   teamB: { id: string; players: string[] };
+  waitingList: string[];
   status: "pending" | "live" | "finished";
   startedAt?: string;
   endedAt?: string;
@@ -110,6 +111,13 @@ function useGameTimer(game: Game | undefined) {
 
 type EventSheetMode = "goal" | "assist" | "note" | null;
 
+type SubStep =
+  | { type: "pick-player" }
+  | { type: "pick-action"; playerId: string; fromTeam: "A" | "B" }
+  | { type: "pick-swap-target"; playerId: string; fromTeam: "A" | "B"; targetTeam: "A" | "B" | "outside" }
+  | { type: "pick-add-target"; source: "bench" | "outside"; targetTeam: "A" | "B" }
+  | { type: "pick-outside-add-team"; playerId: string };
+
 export default function LiveGamePage({ params }: { params: Promise<{ id: string; gameId: string }> }) {
   const { id, gameId } = use(params);
   const router = useRouter();
@@ -118,6 +126,8 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
   const [sheetMode, setSheetMode] = useState<EventSheetMode>(null);
   const [noteText, setNoteText] = useState("");
   const [allPlayers, setAllPlayers] = useState<PlayerInfo[]>([]);
+  const [subOpen, setSubOpen] = useState(false);
+  const [subStep, setSubStep] = useState<SubStep>({ type: "pick-player" });
 
   const { data: game, isLoading } = useQuery<Game>({
     queryKey: ["game", gameId],
@@ -203,7 +213,18 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? "Erro ao pausar jogo"); }
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["game", gameId] }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["game", gameId] });
+      const prev = queryClient.getQueryData<Game>(["game", gameId]);
+      if (prev) {
+        queryClient.setQueryData<Game>(["game", gameId], { ...prev, pausedAt: new Date().toISOString() });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["game", gameId], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["game", gameId] }),
   });
 
   const resumeMutation = useMutation({
@@ -212,7 +233,40 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? "Erro ao retomar jogo"); }
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["game", gameId] }),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["game", gameId] });
+      const prev = queryClient.getQueryData<Game>(["game", gameId]);
+      if (prev && prev.pausedAt) {
+        const additionalPaused = Math.floor((Date.now() - new Date(prev.pausedAt).getTime()) / 1000);
+        queryClient.setQueryData<Game>(["game", gameId], {
+          ...prev,
+          pausedAt: undefined,
+          pausedDuration: (prev.pausedDuration ?? 0) + additionalPaused,
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["game", gameId], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["game", gameId] }),
+  });
+
+  const subMutation = useMutation({
+    mutationFn: async ({ teamAPlayers, teamBPlayers, waitingList }: { teamAPlayers: string[]; teamBPlayers: string[]; waitingList: string[] }) => {
+      const res = await fetch(`/api/games/${gameId}/teams`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamAPlayers, teamBPlayers, waitingList }),
+      });
+      if (!res.ok) throw new Error("Erro na substituição");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["game", gameId] });
+      setSubOpen(false);
+      setSubStep({ type: "pick-player" });
+    },
   });
 
   const getPlayerName = (pid: string) => allPlayers.find((p) => p.userId === pid)?.name ?? pid.slice(-4);
@@ -233,6 +287,89 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
     if (!game) return 0;
     const players = teamSide === "A" ? game.teamA.players : game.teamB.players;
     return game.events.filter((e) => e.type === "goal" && e.playerId && players.includes(e.playerId)).length;
+  }
+
+  function getOutsidePlayers(): PlayerInfo[] {
+    if (!game || !matchDay) return [];
+    const inGame = new Set([...game.teamA.players, ...game.teamB.players, ...(game.waitingList ?? [])]);
+    const outside: PlayerInfo[] = [];
+    for (const team of matchDay.teams ?? []) {
+      for (const p of team.players ?? []) {
+        if (!inGame.has(p.userId)) {
+          outside.push({ userId: p.userId, name: p.name ?? getPlayerName(p.userId) });
+        }
+      }
+    }
+    for (const p of matchDay.players ?? []) {
+      if (!inGame.has(p.userId) && !outside.some((o) => o.userId === p.userId)) {
+        outside.push({ userId: p.userId, name: p.name ?? getPlayerName(p.userId) });
+      }
+    }
+    return outside.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }
+
+  function getBenchPlayers(): PlayerInfo[] {
+    if (!game) return [];
+    return (game.waitingList ?? []).map((pid) => ({ userId: pid, name: getPlayerName(pid) }));
+  }
+
+  function doSub(newA: string[], newB: string[], newWaiting: string[]) {
+    subMutation.mutate({ teamAPlayers: newA, teamBPlayers: newB, waitingList: newWaiting });
+  }
+
+  function swapPlayers(playerOut: string, fromTeam: "A" | "B", playerIn: string, fromSource: "A" | "B" | "bench" | "outside") {
+    if (!game) return;
+    let newA = [...game.teamA.players];
+    let newB = [...game.teamB.players];
+    let newWaiting = [...(game.waitingList ?? [])];
+
+    // Remove playerOut from their team
+    if (fromTeam === "A") newA = newA.filter((p) => p !== playerOut);
+    else newB = newB.filter((p) => p !== playerOut);
+
+    // Remove playerIn from their source
+    if (fromSource === "A") newA = newA.filter((p) => p !== playerIn);
+    else if (fromSource === "B") newB = newB.filter((p) => p !== playerIn);
+    else if (fromSource === "bench") newWaiting = newWaiting.filter((p) => p !== playerIn);
+
+    // Place playerIn in the team where playerOut was
+    if (fromTeam === "A") newA.push(playerIn);
+    else newB.push(playerIn);
+
+    // Place playerOut where playerIn was (swap) or bench
+    if (fromSource === "A" || fromSource === "B") {
+      if (fromSource === "A") newA.push(playerOut);
+      else newB.push(playerOut);
+    } else {
+      newWaiting.push(playerOut);
+    }
+
+    doSub(newA, newB, newWaiting);
+  }
+
+  function sendToBench(playerId: string, fromTeam: "A" | "B") {
+    if (!game) return;
+    let newA = [...game.teamA.players];
+    let newB = [...game.teamB.players];
+    const newWaiting = [...(game.waitingList ?? []), playerId];
+    if (fromTeam === "A") newA = newA.filter((p) => p !== playerId);
+    else newB = newB.filter((p) => p !== playerId);
+    doSub(newA, newB, newWaiting);
+  }
+
+  function addFromBench(playerId: string, toTeam: "A" | "B") {
+    if (!game) return;
+    const newA = toTeam === "A" ? [...game.teamA.players, playerId] : [...game.teamA.players];
+    const newB = toTeam === "B" ? [...game.teamB.players, playerId] : [...game.teamB.players];
+    const newWaiting = (game.waitingList ?? []).filter((p) => p !== playerId);
+    doSub(newA, newB, newWaiting);
+  }
+
+  function addFromOutside(playerId: string, toTeam: "A" | "B") {
+    if (!game) return;
+    const newA = toTeam === "A" ? [...game.teamA.players, playerId] : [...game.teamA.players];
+    const newB = toTeam === "B" ? [...game.teamB.players, playerId] : [...game.teamB.players];
+    doSub(newA, newB, [...(game.waitingList ?? [])]);
   }
 
   if (isLoading) {
@@ -375,7 +512,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
 
         {isLive && (
           <>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <Button
                 className="h-16 gap-1 flex-col font-bold bg-green-600 hover:bg-green-700"
                 onClick={() => setSheetMode("goal")}
@@ -392,6 +529,14 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
               >
                 <span className="text-xl">👟</span>
                 <span className="text-xs">Assist</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 gap-1 flex-col font-bold"
+                onClick={() => { setSubStep({ type: "pick-player" }); setSubOpen(true); }}
+              >
+                <ArrowRightLeft className="w-5 h-5" />
+                <span className="text-xs">Sub</span>
               </Button>
               <Button
                 variant="outline"
@@ -519,6 +664,262 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                 <p className="text-destructive text-sm text-center">{(addEventMutation.error as Error).message}</p>
               )}
             </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Substitution Sheet */}
+      <Sheet open={subOpen} onOpenChange={(o) => { if (!o) { setSubOpen(false); setSubStep({ type: "pick-player" }); } }}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh]">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="font-bold text-lg flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5" />
+              Substituição
+            </SheetTitle>
+          </SheetHeader>
+
+          {subStep.type === "pick-player" && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground font-medium">Selecione o jogador ou ação:</p>
+
+              <Tabs defaultValue="field">
+                <TabsList className="w-full">
+                  <TabsTrigger value="field" className="flex-1 font-semibold">Em Campo</TabsTrigger>
+                  <TabsTrigger value="bench" className="flex-1 font-semibold">Banco ({getBenchPlayers().length})</TabsTrigger>
+                  <TabsTrigger value="outside" className="flex-1 font-semibold">Fora ({getOutsidePlayers().length})</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="field" className="mt-3">
+                  <ScrollArea className="h-52">
+                    <div className="space-y-1">
+                      {game && (
+                        <>
+                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1 pb-1">{teamAName}</p>
+                          {getTeamPlayers("A").map((player) => {
+                            const color = getAvatarColor(player.name);
+                            return (
+                              <button
+                                key={player.userId}
+                                className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors text-left"
+                                onClick={() => setSubStep({ type: "pick-action", playerId: player.userId, fromTeam: "A" })}
+                              >
+                                <Avatar className="w-8 h-8 shrink-0">
+                                  <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                                    {player.name.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="font-semibold text-sm">{player.name}</span>
+                              </button>
+                            );
+                          })}
+                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-1 pb-1 pt-3">{teamBName}</p>
+                          {getTeamPlayers("B").map((player) => {
+                            const color = getAvatarColor(player.name);
+                            return (
+                              <button
+                                key={player.userId}
+                                className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors text-left"
+                                onClick={() => setSubStep({ type: "pick-action", playerId: player.userId, fromTeam: "B" })}
+                              >
+                                <Avatar className="w-8 h-8 shrink-0">
+                                  <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                                    {player.name.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="font-semibold text-sm">{player.name}</span>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="bench" className="mt-3">
+                  <ScrollArea className="h-52">
+                    <div className="space-y-2">
+                      {getBenchPlayers().length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-4">Banco vazio</p>
+                      )}
+                      {getBenchPlayers().map((player) => {
+                        const color = getAvatarColor(player.name);
+                        return (
+                          <div
+                            key={player.userId}
+                            className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card"
+                          >
+                            <Avatar className="w-8 h-8 shrink-0">
+                              <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                                {player.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold text-sm flex-1">{player.name}</span>
+                            <div className="flex gap-1.5 shrink-0">
+                              <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => addFromBench(player.userId, "A")}>
+                                <UserPlus className="w-3 h-3 mr-1" /> {teamAName}
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => addFromBench(player.userId, "B")}>
+                                <UserPlus className="w-3 h-3 mr-1" /> {teamBName}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="outside" className="mt-3">
+                  <ScrollArea className="h-52">
+                    <div className="space-y-2">
+                      {getOutsidePlayers().length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-4">Nenhum jogador de fora</p>
+                      )}
+                      {getOutsidePlayers().map((player) => {
+                        const color = getAvatarColor(player.name);
+                        return (
+                          <div key={player.userId} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
+                            <Avatar className="w-8 h-8 shrink-0">
+                              <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                                {player.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold text-sm flex-1">{player.name}</span>
+                            <div className="flex gap-1.5 shrink-0">
+                              <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => addFromOutside(player.userId, "A")}>
+                                <UserPlus className="w-3 h-3 mr-1" /> {teamAName}
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={() => addFromOutside(player.userId, "B")}>
+                                <UserPlus className="w-3 h-3 mr-1" /> {teamBName}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          {subStep.type === "pick-action" && (() => {
+            const playerName = getPlayerName(subStep.playerId);
+            const oppositeTeam = subStep.fromTeam === "A" ? "B" : "A";
+            const oppositeTeamName = subStep.fromTeam === "A" ? teamBName : teamAName;
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-muted">
+                  <Avatar className="w-9 h-9 shrink-0">
+                    <AvatarFallback className={`text-sm font-bold ${getAvatarColor(playerName).bg} ${getAvatarColor(playerName).text}`}>
+                      {playerName.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-bold text-sm">{playerName}</p>
+                    <p className="text-xs text-muted-foreground">{subStep.fromTeam === "A" ? teamAName : teamBName}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors text-left"
+                    onClick={() => setSubStep({ type: "pick-swap-target", playerId: subStep.playerId, fromTeam: subStep.fromTeam, targetTeam: oppositeTeam as "A" | "B" })}
+                  >
+                    <ArrowRightLeft className="w-5 h-5 text-blue-500 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-sm">Trocar com {oppositeTeamName}</p>
+                      <p className="text-xs text-muted-foreground">Troca com jogador do time adversário</p>
+                    </div>
+                  </button>
+
+                  <button
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors text-left"
+                    onClick={() => sendToBench(subStep.playerId, subStep.fromTeam)}
+                    disabled={subMutation.isPending}
+                  >
+                    <UserMinus className="w-5 h-5 text-amber-500 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-sm">Mandar pro banco</p>
+                      <p className="text-xs text-muted-foreground">Sai de campo sem substituir</p>
+                    </div>
+                  </button>
+
+                  {getOutsidePlayers().length > 0 && (
+                    <button
+                      className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors text-left"
+                      onClick={() => setSubStep({ type: "pick-swap-target", playerId: subStep.playerId, fromTeam: subStep.fromTeam, targetTeam: "outside" })}
+                    >
+                      <ArrowRightLeft className="w-5 h-5 text-violet-500 shrink-0" />
+                      <div>
+                        <p className="font-semibold text-sm">Trocar com time de fora</p>
+                        <p className="text-xs text-muted-foreground">Troca com jogador que não está jogando</p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+
+                <Button variant="ghost" className="w-full" onClick={() => setSubStep({ type: "pick-player" })}>
+                  Voltar
+                </Button>
+              </div>
+            );
+          })()}
+
+          {subStep.type === "pick-swap-target" && (() => {
+            const playerName = getPlayerName(subStep.playerId);
+            const targets = subStep.targetTeam === "outside"
+              ? getOutsidePlayers()
+              : getTeamPlayers(subStep.targetTeam);
+            const targetLabel = subStep.targetTeam === "outside" ? "time de fora" : (subStep.targetTeam === "A" ? teamAName : teamBName);
+
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-muted">
+                  <Avatar className="w-8 h-8 shrink-0">
+                    <AvatarFallback className={`text-xs font-bold ${getAvatarColor(playerName).bg} ${getAvatarColor(playerName).text}`}>
+                      {playerName.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <p className="font-bold text-sm">{playerName}</p>
+                  <ArrowRightLeft className="w-4 h-4 text-muted-foreground mx-1" />
+                  <p className="text-sm text-muted-foreground">Trocar com quem do {targetLabel}?</p>
+                </div>
+
+                <ScrollArea className="h-52">
+                  <div className="space-y-2">
+                    {targets.map((target) => {
+                      const color = getAvatarColor(target.name);
+                      const fromSource = subStep.targetTeam === "outside" ? "outside" as const : subStep.targetTeam;
+                      return (
+                        <button
+                          key={target.userId}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors text-left"
+                          onClick={() => swapPlayers(subStep.playerId, subStep.fromTeam, target.userId, fromSource)}
+                          disabled={subMutation.isPending}
+                        >
+                          <Avatar className="w-8 h-8 shrink-0">
+                            <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
+                              {target.name.slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-semibold text-sm">{target.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+
+                <Button variant="ghost" className="w-full" onClick={() => setSubStep({ type: "pick-action", playerId: subStep.playerId, fromTeam: subStep.fromTeam })}>
+                  Voltar
+                </Button>
+              </div>
+            );
+          })()}
+
+          {subMutation.isError && (
+            <p className="text-destructive text-sm text-center mt-2">{(subMutation.error as Error).message}</p>
           )}
         </SheetContent>
       </Sheet>

@@ -8,11 +8,20 @@ export interface PlayerStat {
   count: number
 }
 
+export interface PlayerWinStat {
+  userId: string
+  name: string
+  gamesPlayed: number
+  wins: number
+  winRate: number
+}
+
 export interface StatsResult {
   topScorers: PlayerStat[]
   topAssisters: PlayerStat[]
   gamesPlayed: number
   totalGoals: number
+  playerStats: PlayerWinStat[]
   month: string | null
 }
 

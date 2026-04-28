@@ -69,13 +69,7 @@ function getAvatarColor(name: string) {
   return AVATAR_COLORS[idx];
 }
 
-const TEAM_STYLES = [
-  { gradient: "from-blue-600 to-blue-500", light: "bg-blue-50", border: "border-blue-200" },
-  { gradient: "from-rose-600 to-rose-500", light: "bg-rose-50", border: "border-rose-200" },
-  { gradient: "from-amber-500 to-amber-400", light: "bg-amber-50", border: "border-amber-200" },
-  { gradient: "from-violet-600 to-violet-500", light: "bg-violet-50", border: "border-violet-200" },
-  { gradient: "from-teal-600 to-teal-500", light: "bg-teal-50", border: "border-teal-200" },
-];
+import { TEAM_COLORS, getTeamColor } from "@/lib/team-colors";
 
 export default function DrawPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -278,16 +272,38 @@ export default function DrawPage({ params }: { params: Promise<{ id: string }> }
 
         {/* Team cards */}
         {displayedTeams.map((team, teamIdx) => {
-          const style = TEAM_STYLES[teamIdx % TEAM_STYLES.length];
+          const style = getTeamColor(team.name);
           return (
             <div key={team.id} className={`rounded-2xl border ${style.border} overflow-hidden shadow-sm`}>
               <div className={`bg-gradient-to-r ${style.gradient} px-4 py-3 flex items-center justify-between`}>
-                <h3 className="text-white font-black text-base">{team.name}</h3>
+                <Select
+                  value={team.name}
+                  onValueChange={(color) => {
+                    setLocalTeams((prev) => {
+                      if (!prev) return prev;
+                      return prev.map((t) => t.id === team.id ? { ...t, name: color } : t);
+                    });
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-auto gap-2 border-white/30 bg-white/20 text-white font-black text-base hover:bg-white/30 [&>svg]:text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEAM_COLORS.map((c) => (
+                      <SelectItem key={c.id} value={c.label}>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-3 h-3 rounded-full ${c.accent}`} />
+                          {c.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <span className="text-white/80 text-xs font-semibold bg-white/20 rounded-full px-2.5 py-1">
                   {team.players.length} jogadores
                 </span>
               </div>
-              <div className={`divide-y ${style.light}`}>
+              <div className={`divide-y ${style.divide}`}>
                 {team.players.map((player) => {
                   const color = getAvatarColor(player.name);
                   return (

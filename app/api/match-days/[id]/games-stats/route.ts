@@ -81,9 +81,36 @@ export async function GET(
     }
   }
 
-  const uniqueIds = [...new Set([...goalCounts.keys(), ...assistCounts.keys()])];
-  const users = uniqueIds.length > 0
-    ? await User.find({ _id: { $in: uniqueIds } }).lean()
+  const playerGames = new Map<string, number>();
+  const playerWins = new Map<string, number>();
+
+  for (const game of games) {
+    const teamAPlayerIds = game.teamA.players.map((p) => p.toString());
+    const teamBPlayerIds = game.teamB.players.map((p) => p.toString());
+    const allPlayerIds = [...teamAPlayerIds, ...teamBPlayerIds];
+
+    const goalsA = game.events.filter(
+      (e) => e.type === "goal" && e.playerId && teamAPlayerIds.includes(e.playerId.toString())
+    ).length;
+    const goalsB = game.events.filter(
+      (e) => e.type === "goal" && e.playerId && teamBPlayerIds.includes(e.playerId.toString())
+    ).length;
+
+    for (const pid of allPlayerIds) {
+      playerGames.set(pid, (playerGames.get(pid) ?? 0) + 1);
+    }
+
+    if (goalsA !== goalsB) {
+      const winnerIds = goalsA > goalsB ? teamAPlayerIds : teamBPlayerIds;
+      for (const pid of winnerIds) {
+        playerWins.set(pid, (playerWins.get(pid) ?? 0) + 1);
+      }
+    }
+  }
+
+  const allPlayerIds = [...new Set([...goalCounts.keys(), ...assistCounts.keys(), ...playerGames.keys()])];
+  const users = allPlayerIds.length > 0
+    ? await User.find({ _id: { $in: allPlayerIds } }).lean()
     : [];
   const userMap = new Map(users.map((u) => [u._id.toString(), u.name]));
 
@@ -108,6 +135,19 @@ export async function GET(
     }))
     .sort((a, b) => b.points - a.points || b.wins - a.wins);
 
+  const playerStats = [...playerGames.entries()]
+    .map(([userId, gamesPlayed]) => {
+      const wins = playerWins.get(userId) ?? 0;
+      return {
+        userId,
+        name: userMap.get(userId) ?? "Desconhecido",
+        gamesPlayed,
+        wins,
+        winRate: gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0,
+      };
+    })
+    .sort((a, b) => b.winRate - a.winRate || b.wins - a.wins || b.gamesPlayed - a.gamesPlayed);
+
   return NextResponse.json({
     teamStats,
     ranking,
@@ -115,5 +155,6 @@ export async function GET(
     topAssisters: toStats(assistCounts),
     gamesPlayed: games.length,
     notes,
+    playerStats,
   });
 }
