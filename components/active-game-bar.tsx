@@ -25,7 +25,7 @@ function formatTime(seconds: number) {
 
 function useElapsed(game: ActiveGame | null | undefined) {
   const [elapsed, setElapsed] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
     clearInterval(intervalRef.current);
