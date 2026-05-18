@@ -48,6 +48,12 @@ export async function GET(req: NextRequest) {
         if (teamAPlayerIds.includes(pid)) goalsA++;
         else if (teamBPlayerIds.includes(pid)) goalsB++;
       }
+      if (e.type === "own_goal" && e.playerId) {
+        const pid = e.playerId.toString();
+        totalGoals++;
+        if (teamAPlayerIds.includes(pid)) goalsB++;
+        else if (teamBPlayerIds.includes(pid)) goalsA++;
+      }
       if (e.type === "assist" && e.playerId) {
         const pid = e.playerId.toString();
         assistCounts.set(pid, (assistCounts.get(pid) ?? 0) + 1);

@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface GameEvent {
-  type: "goal" | "assist" | "note";
+  type: "goal" | "assist" | "note" | "own_goal";
   playerId?: string;
   playerName?: string;
   relatedPlayerId?: string;
@@ -235,7 +235,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
           const teamBName = getTeamName(game.teamB.id);
           const goalEvents = game.events
             .map((e, i) => ({ ...e, originalIndex: i }))
-            .filter((e) => e.type === "goal" || e.type === "assist");
+            .filter((e) => e.type === "goal" || e.type === "assist" || e.type === "own_goal");
 
           return (
             <div key={game.id} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -268,7 +268,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                   return (
                     <div key={event.originalIndex} className="flex items-center gap-2 px-4 py-2.5">
                       <span className="text-base shrink-0">
-                        {event.type === "goal" ? "⚽" : "👟"}
+                        {event.type === "goal" ? "⚽" : event.type === "own_goal" ? "🔴" : "👟"}
                       </span>
 
                       {isEditing ? (
@@ -320,8 +320,8 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                               <p className="text-xs text-muted-foreground">assist: {event.relatedPlayerName}</p>
                             )}
                           </div>
-                          <Badge variant="outline" className="text-[10px] shrink-0">
-                            {event.type === "goal" ? "Gol" : "Assist"}
+                          <Badge variant="outline" className={`text-[10px] shrink-0 ${event.type === "own_goal" ? "text-destructive border-destructive/30" : ""}`}>
+                            {event.type === "goal" ? "Gol" : event.type === "own_goal" ? "Gol Contra" : "Assist"}
                           </Badge>
                           <button
                             className="p-1.5 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors"
@@ -342,7 +342,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Remover evento?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  {event.type === "goal" ? "Gol" : "Assistência"} de {playerName} será removido.
+                                  {event.type === "goal" ? "Gol" : event.type === "own_goal" ? "Gol contra" : "Assistência"} de {playerName} será removido.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>

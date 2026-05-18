@@ -39,7 +39,7 @@ export async function GET() {
   for (const game of games) {
     const mid = game.matchDayId.toString();
     for (const e of game.events) {
-      if (e.type === "goal") {
+      if (e.type === "goal" || e.type === "own_goal") {
         goalsByMatchDay.set(mid, (goalsByMatchDay.get(mid) ?? 0) + 1);
       }
       if (e.type === "assist") {

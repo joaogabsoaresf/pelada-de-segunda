@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-export type EventType = "goal" | "assist" | "note";
+export type EventType = "goal" | "assist" | "note" | "own_goal";
 export type GameStatus = "pending" | "live" | "finished";
 
 export interface IGameEvent {
@@ -32,7 +32,7 @@ export interface IGame extends Document {
 
 const GameEventSchema = new Schema<IGameEvent>(
   {
-    type: { type: String, enum: ["goal", "assist", "note"], required: true },
+    type: { type: String, enum: ["goal", "assist", "note", "own_goal"], required: true },
     playerId: { type: Schema.Types.ObjectId, ref: "User" },
     relatedPlayerId: { type: Schema.Types.ObjectId, ref: "User" },
     note: { type: String },

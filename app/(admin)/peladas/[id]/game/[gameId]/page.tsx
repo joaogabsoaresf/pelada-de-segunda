@@ -38,7 +38,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface PlayerInfo { userId: string; name: string }
 interface GameEvent {
-  type: "goal" | "assist" | "note";
+  type: "goal" | "assist" | "note" | "own_goal";
   playerId?: string;
   relatedPlayerId?: string;
   note?: string;
@@ -131,8 +131,10 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
   const queryClient = useQueryClient();
 
   const [sheetMode, setSheetMode] = useState<EventSheetMode>(null);
+  const [ownGoalTeam, setOwnGoalTeam] = useState<"A" | "B" | null>(null);
   const [noteText, setNoteText] = useState("");
   const [allPlayers, setAllPlayers] = useState<PlayerInfo[]>([]);
+  const [goalkeeperIds, setGoalkeeperIds] = useState<Set<string>>(new Set());
   const [subOpen, setSubOpen] = useState(false);
   const [subStep, setSubStep] = useState<SubStep>({ type: "pick-player" });
   const closeOnSubRef = useRef(false);
@@ -165,6 +167,11 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       }
     }
     setAllPlayers([...playerMap.entries()].map(([userId, name]) => ({ userId, name })));
+    const gkIds = new Set<string>();
+    for (const p of matchDay.players ?? []) {
+      if (p.pot === -1) gkIds.add(p.userId);
+    }
+    setGoalkeeperIds(gkIds);
   }, [matchDay]);
 
   const elapsed = useGameTimer(game);
@@ -196,7 +203,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
   });
 
   const addEventMutation = useMutation({
-    mutationFn: async (payload: { type: "goal" | "assist" | "note"; playerId?: string; note?: string }) => {
+    mutationFn: async (payload: { type: "goal" | "assist" | "note" | "own_goal"; playerId?: string; note?: string }) => {
       const res = await fetch(`/api/games/${gameId}/events`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -207,7 +214,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["game", gameId] });
       queryClient.invalidateQueries({ queryKey: ["active-game"] });
-      setSheetMode(null); setNoteText("");
+      setSheetMode(null); setNoteText(""); setOwnGoalTeam(null);
     },
   });
 
@@ -304,8 +311,11 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
 
   function countGoals(teamSide: "A" | "B") {
     if (!game) return 0;
-    const players = teamSide === "A" ? game.teamA.players : game.teamB.players;
-    return game.events.filter((e) => e.type === "goal" && e.playerId && players.includes(e.playerId)).length;
+    const myPlayers = teamSide === "A" ? game.teamA.players : game.teamB.players;
+    const oppPlayers = teamSide === "A" ? game.teamB.players : game.teamA.players;
+    const goals = game.events.filter((e) => e.type === "goal" && e.playerId && myPlayers.includes(e.playerId)).length;
+    const ownGoals = game.events.filter((e) => e.type === "own_goal" && e.playerId && oppPlayers.includes(e.playerId)).length;
+    return goals + ownGoals;
   }
 
   function getOutsidePlayers(): PlayerInfo[] {
@@ -481,19 +491,20 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                     <div className="grid grid-cols-2 gap-2">
                       {players.map((player) => {
                         const color = getAvatarColor(player.name);
+                        const isGK = goalkeeperIds.has(player.userId);
                         return (
                           <Tooltip key={player.userId}>
                             <TooltipTrigger asChild>
-                              <div className="flex flex-col items-center gap-1 cursor-default">
+                              <div className="flex flex-col items-center gap-1 cursor-default relative">
                                 <Avatar className="w-9 h-9">
                                   <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
-                                    {player.name.slice(0, 2).toUpperCase()}
+                                    {isGK ? "🧤" : player.name.slice(0, 2).toUpperCase()}
                                   </AvatarFallback>
                                 </Avatar>
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="top">
-                              <p className="text-xs font-semibold">{player.name}</p>
+                              <p className="text-xs font-semibold">{isGK ? "🧤 " : ""}{player.name}</p>
                             </TooltipContent>
                           </Tooltip>
                         );
@@ -519,7 +530,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                       return (
                         <div key={i} className="flex items-start gap-1.5 text-xs py-1.5 border-b border-border/40 last:border-0">
                           <span className="shrink-0 text-sm">
-                            {event.type === "goal" ? "⚽" : event.type === "assist" ? "👟" : "📝"}
+                            {event.type === "goal" ? "⚽" : event.type === "own_goal" ? "🔴" : event.type === "assist" ? "👟" : "📝"}
                           </span>
                           <div className="flex-1 min-w-0">
                             {event.type === "goal" && event.playerId && (
@@ -530,12 +541,18 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                                 )}
                               </p>
                             )}
+                            {event.type === "own_goal" && event.playerId && (
+                              <p className="truncate text-destructive">
+                                <span className="font-semibold">{getPlayerName(event.playerId)}</span>
+                                <span className="text-muted-foreground"> (GC)</span>
+                              </p>
+                            )}
                             {event.type === "assist" && event.playerId && (
                               <p className="truncate">Assist <span className="font-semibold">{getPlayerName(event.playerId)}</span></p>
                             )}
                             {event.type === "note" && <p className="text-muted-foreground italic truncate">{event.note}</p>}
                           </div>
-                          {(event.type === "goal" || event.type === "assist") && isLive && (
+                          {(event.type === "goal" || event.type === "assist" || event.type === "own_goal") && isLive && (
                             <button
                               className="p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
                               onClick={() => deleteEventMutation.mutate(realIndex)}
@@ -565,19 +582,20 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                     <div className="grid grid-cols-2 gap-2">
                       {players.map((player) => {
                         const color = getAvatarColor(player.name);
+                        const isGK = goalkeeperIds.has(player.userId);
                         return (
                           <Tooltip key={player.userId}>
                             <TooltipTrigger asChild>
-                              <div className="flex flex-col items-center gap-1 cursor-default">
+                              <div className="flex flex-col items-center gap-1 cursor-default relative">
                                 <Avatar className="w-9 h-9">
                                   <AvatarFallback className={`text-xs font-bold ${color.bg} ${color.text}`}>
-                                    {player.name.slice(0, 2).toUpperCase()}
+                                    {isGK ? "🧤" : player.name.slice(0, 2).toUpperCase()}
                                   </AvatarFallback>
                                 </Avatar>
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="top">
-                              <p className="text-xs font-semibold">{player.name}</p>
+                              <p className="text-xs font-semibold">{isGK ? "🧤 " : ""}{player.name}</p>
                             </TooltipContent>
                           </Tooltip>
                         );
@@ -691,11 +709,13 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
       </div>
 
       {/* Event Sheet */}
-      <Sheet open={sheetMode !== null} onOpenChange={(o) => !o && setSheetMode(null)}>
+      <Sheet open={sheetMode !== null} onOpenChange={(o) => { if (!o) { setSheetMode(null); setOwnGoalTeam(null); } }}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh]">
           <SheetHeader className="pb-4">
             <SheetTitle className="font-bold text-lg">
-              {sheetMode === "goal" ? "⚽ Registrar Gol" : sheetMode === "assist" ? "👟 Registrar Assistência" : "📝 Registrar Lance"}
+              {ownGoalTeam
+                ? "🔴 Gol Contra"
+                : sheetMode === "goal" ? "⚽ Registrar Gol" : sheetMode === "assist" ? "👟 Registrar Assistência" : "📝 Registrar Lance"}
             </SheetTitle>
           </SheetHeader>
 
@@ -716,6 +736,39 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                 {addEventMutation.isPending ? "Registrando..." : "Registrar"}
               </Button>
             </div>
+          ) : ownGoalTeam ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Quem fez o gol contra? ({ownGoalTeam === "A" ? teamAName : teamBName})
+              </p>
+              <ScrollArea className="h-52">
+                <div className="space-y-2 pr-1">
+                  {getTeamPlayers(ownGoalTeam).map((player) => {
+                    const color = getAvatarColor(player.name);
+                    const isGK = goalkeeperIds.has(player.userId);
+                    return (
+                      <button
+                        key={player.userId}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-destructive/30 bg-card hover:bg-destructive/5 transition-colors text-left"
+                        onClick={() => addEventMutation.mutate({ type: "own_goal", playerId: player.userId })}
+                        disabled={addEventMutation.isPending}
+                      >
+                        <Avatar className="w-9 h-9 shrink-0">
+                          <AvatarFallback className={`text-sm font-bold ${color.bg} ${color.text}`}>
+                            {isGK ? "🧤" : player.name.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-semibold text-sm">{isGK ? "🧤 " : ""}{player.name}</span>
+                        <Badge variant="outline" className="ml-auto text-destructive border-destructive/30 text-[10px]">GC</Badge>
+                      </button>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <Button variant="ghost" className="w-full" onClick={() => setOwnGoalTeam(null)}>
+                Voltar
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
               <Tabs defaultValue="A">
@@ -729,6 +782,7 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                       <div className="space-y-2 pr-1">
                         {getTeamPlayers(side).map((player) => {
                           const color = getAvatarColor(player.name);
+                          const isGK = goalkeeperIds.has(player.userId);
                           return (
                             <button
                               key={player.userId}
@@ -742,13 +796,22 @@ export default function LiveGamePage({ params }: { params: Promise<{ id: string;
                             >
                               <Avatar className="w-9 h-9 shrink-0">
                                 <AvatarFallback className={`text-sm font-bold ${color.bg} ${color.text}`}>
-                                  {player.name.slice(0, 2).toUpperCase()}
+                                  {isGK ? "🧤" : player.name.slice(0, 2).toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="font-semibold text-sm">{player.name}</span>
+                              <span className="font-semibold text-sm">{isGK ? "🧤 " : ""}{player.name}</span>
                             </button>
                           );
                         })}
+                        {sheetMode === "goal" && (
+                          <button
+                            className="w-full flex items-center gap-3 p-3 rounded-xl border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors text-left"
+                            onClick={() => setOwnGoalTeam(side === "A" ? "B" : "A")}
+                          >
+                            <span className="text-lg">🔴</span>
+                            <span className="font-semibold text-sm text-destructive">Gol Contra</span>
+                          </button>
+                        )}
                       </div>
                     </ScrollArea>
                   </TabsContent>

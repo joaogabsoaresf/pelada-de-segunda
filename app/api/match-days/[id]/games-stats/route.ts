@@ -42,13 +42,18 @@ export async function GET(
     const teamBPlayerIds = game.teamB.players.map((p) => p.toString());
 
     const goals = game.events.filter((e) => e.type === "goal");
+    const ownGoals = game.events.filter((e) => e.type === "own_goal");
     const assists = game.events.filter((e) => e.type === "assist");
 
     const scoreA = goals.filter(
       (e) => e.playerId && teamAPlayerIds.includes(e.playerId.toString())
+    ).length + ownGoals.filter(
+      (e) => e.playerId && teamBPlayerIds.includes(e.playerId.toString())
     ).length;
     const scoreB = goals.filter(
       (e) => e.playerId && teamBPlayerIds.includes(e.playerId.toString())
+    ).length + ownGoals.filter(
+      (e) => e.playerId && teamAPlayerIds.includes(e.playerId.toString())
     ).length;
 
     if (scoreA > scoreB) {
@@ -89,11 +94,16 @@ export async function GET(
     const teamBPlayerIds = game.teamB.players.map((p) => p.toString());
     const allPlayerIds = [...teamAPlayerIds, ...teamBPlayerIds];
 
+    const ownGoalsInGame = game.events.filter((e) => e.type === "own_goal");
     const goalsA = game.events.filter(
       (e) => e.type === "goal" && e.playerId && teamAPlayerIds.includes(e.playerId.toString())
+    ).length + ownGoalsInGame.filter(
+      (e) => e.playerId && teamBPlayerIds.includes(e.playerId.toString())
     ).length;
     const goalsB = game.events.filter(
       (e) => e.type === "goal" && e.playerId && teamBPlayerIds.includes(e.playerId.toString())
+    ).length + ownGoalsInGame.filter(
+      (e) => e.playerId && teamAPlayerIds.includes(e.playerId.toString())
     ).length;
 
     for (const pid of allPlayerIds) {

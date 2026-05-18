@@ -45,10 +45,12 @@ export const CreateGameSchema = z.object({
   matchDayId: z.string().min(1),
   teamAId: z.string().min(1),
   teamBId: z.string().min(1),
+  goalkeeperAId: z.string().optional(),
+  goalkeeperBId: z.string().optional(),
 });
 
 export const AddEventSchema = z.object({
-  type: z.enum(["goal", "assist", "note"]),
+  type: z.enum(["goal", "assist", "note", "own_goal"]),
   playerId: z.string().optional(),
   relatedPlayerId: z.string().optional(),
   note: z.string().optional(),

@@ -26,7 +26,7 @@ export async function POST(
 
 
 
-  if (type === "goal" && !playerId) {
+  if ((type === "goal" || type === "own_goal") && !playerId) {
     return NextResponse.json(
       { error: "Gol precisa de um jogador" },
       { status: 400 }

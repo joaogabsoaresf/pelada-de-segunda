@@ -23,7 +23,7 @@ export async function GET() {
   const goalsByMatchDay = new Map<string, number>();
   for (const game of games) {
     const mid = game.matchDayId.toString();
-    const goals = game.events.filter((e) => e.type === "goal").length;
+    const goals = game.events.filter((e) => e.type === "goal" || e.type === "own_goal").length;
     goalsByMatchDay.set(mid, (goalsByMatchDay.get(mid) ?? 0) + goals);
   }
 

@@ -91,6 +91,8 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newType, setNewType] = useState<"monthly" | "daily" | "goalkeeper">("monthly");
+  const [goalkeeperA, setGoalkeeperA] = useState<string | undefined>(undefined);
+  const [goalkeeperB, setGoalkeeperB] = useState<string | undefined>(undefined);
 
   const { data: matchDay, isLoading } = useQuery<MatchDay>({
     queryKey: ["match-day", id],
@@ -118,7 +120,7 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/games", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchDayId: id, teamAId: selectedTeams[0], teamBId: selectedTeams[1] }),
+        body: JSON.stringify({ matchDayId: id, teamAId: selectedTeams[0], teamBId: selectedTeams[1], goalkeeperAId: goalkeeperA, goalkeeperBId: goalkeeperB }),
       });
       if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? "Erro ao criar jogo"); }
       return res.json();
@@ -240,6 +242,8 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
       if (prev.length >= 2) return [prev[1], teamId];
       return [...prev, teamId];
     });
+    setGoalkeeperA(undefined);
+    setGoalkeeperB(undefined);
   }
 
   if (isLoading) {
@@ -252,7 +256,9 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
   }
 
   const teams = matchDay?.teams ?? [];
-  const canCreate = selectedTeams.length === 2;
+  const goalkeepers = (matchDay?.players ?? []).filter((p) => p.pot === -1);
+  const needsGoalkeepers = goalkeepers.length >= 2;
+  const canCreate = selectedTeams.length === 2 && (!needsGoalkeepers || (!!goalkeeperA && !!goalkeeperB));
   const gamesPlayed = stats?.gamesPlayed ?? 0;
   const getRecord = (teamId: string): TeamRecord => stats?.teamStats[teamId] ?? { wins: 0, draws: 0, losses: 0 };
 
@@ -365,6 +371,42 @@ export default function NewGamePage({ params }: { params: Promise<{ id: string }
             );
           })}
         </div>
+
+        {/* Goalkeeper assignment */}
+        {selectedTeams.length === 2 && goalkeepers.length > 0 && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-widest">
+              🧤 Atribuir Goleiros
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {selectedTeams.map((teamId, idx) => {
+                const team = teams.find((t) => t.id === teamId);
+                const value = idx === 0 ? goalkeeperA : goalkeeperB;
+                const setValue = idx === 0 ? setGoalkeeperA : setGoalkeeperB;
+                const otherValue = idx === 0 ? goalkeeperB : goalkeeperA;
+                const availableGKs = goalkeepers.filter((gk) => gk.userId !== otherValue);
+                return (
+                  <div key={teamId} className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      {team?.name ?? `Time ${idx === 0 ? "A" : "B"}`}
+                    </label>
+                    <Select value={value ?? "none"} onValueChange={(v) => setValue(v === "none" ? undefined : v)}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Selecionar goleiro" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem goleiro</SelectItem>
+                        {availableGKs.map((gk) => (
+                          <SelectItem key={gk.userId} value={gk.userId}>🧤 {gk.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         {gamesPlayed > 0 && (

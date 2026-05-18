@@ -32,6 +32,7 @@ export async function getGameSummary(gameId: string): Promise<GameSummary> {
   if (!game) throw new Error("Jogo não encontrado");
 
   const goals = game.events.filter((e) => e.type === "goal");
+  const ownGoals = game.events.filter((e) => e.type === "own_goal");
   const assists = game.events.filter((e) => e.type === "assist");
 
   const teamAPlayerIds = game.teamA.players.map((p) => p.toString());
@@ -39,9 +40,13 @@ export async function getGameSummary(gameId: string): Promise<GameSummary> {
 
   const scoreA = goals.filter(
     (e) => e.playerId && teamAPlayerIds.includes(e.playerId.toString())
+  ).length + ownGoals.filter(
+    (e) => e.playerId && teamBPlayerIds.includes(e.playerId.toString())
   ).length;
   const scoreB = goals.filter(
     (e) => e.playerId && teamBPlayerIds.includes(e.playerId.toString())
+  ).length + ownGoals.filter(
+    (e) => e.playerId && teamAPlayerIds.includes(e.playerId.toString())
   ).length;
 
   const allPlayerIds = [

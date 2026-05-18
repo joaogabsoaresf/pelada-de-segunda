@@ -23,8 +23,11 @@ export async function GET() {
   const teamBPlayerIds = game.teamB.players.map((p: any) => p.toString());
 
   const goals = game.events.filter((e: any) => e.type === "goal" && e.playerId);
-  const scoreA = goals.filter((e: any) => teamAPlayerIds.includes(e.playerId.toString())).length;
-  const scoreB = goals.filter((e: any) => teamBPlayerIds.includes(e.playerId.toString())).length;
+  const ownGoals = game.events.filter((e: any) => e.type === "own_goal" && e.playerId);
+  const scoreA = goals.filter((e: any) => teamAPlayerIds.includes(e.playerId.toString())).length
+    + ownGoals.filter((e: any) => teamBPlayerIds.includes(e.playerId.toString())).length;
+  const scoreB = goals.filter((e: any) => teamBPlayerIds.includes(e.playerId.toString())).length
+    + ownGoals.filter((e: any) => teamAPlayerIds.includes(e.playerId.toString())).length;
 
   return NextResponse.json({
     id: game._id.toString(),
